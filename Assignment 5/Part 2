@@ -1,0 +1,52 @@
+import numpy as np
+import matplotlib.pyplot as plt
+train_data = np.loadtxt("trian.txt", delimiter=",")
+dev_data = np.loadtxt("dev.txt", delimiter=",")
+X_train, y_train = train_data[:, :2], train_data[:, 2].astype(int)
+X_dev, y_dev = dev_data[:, :2], dev_data[:, 2].astype(int)
+classes = np.array([1, 2, 3])
+
+means = np.array([X_train[y_train == c].mean(axis=0) for c in classes])
+covs = []
+for i, c in enumerate(classes):
+    pts = X_train[y_train == c]
+    diff = pts - means[i]
+    covs.append((diff.T @ diff) / len(pts))
+covs = np.array(covs)
+pred_index, scores = predict(X_dev, means, covs)
+pred = classes[pred_index]
+cm = confusion_matrix(y_dev, pred, classes)
+acc = 100 * np.mean(pred == y_dev)
+
+# Real data decision region
+mx = 0.08 * (X_train[:, 0].max()-X_train[:, 0].min())
+my = 0.08 * (X_train[:, 1].max()-X_train[:, 1].min())
+xx, yy = np.meshgrid(np.linspace(X_train[:, 0].min()-mx, X_train[:, 0].max()+mx, 180),
+                     np.linspace(X_train[:, 1].min()-my, X_train[:, 1].max()+my, 180))
+grid = np.c_[xx.ravel(), yy.ravel()]
+gp_index, _ = predict(grid, means, covs)
+gp = classes[gp_index]
+Z = gp.reshape(xx.shape)
+plt.figure(figsize=(7, 5.5))
+plt.contourf(xx, yy, Z, levels=[0.5, 1.5, 2.5, 3.5],
+             colors=COLORS, alpha=0.15)
+for i, c in enumerate(classes):
+    pts = X_dev[y_dev == c]
+    plt.scatter(pts[:, 0], pts[:, 1], s=20, alpha=0.75, color=COLORS[i],
+                label=f"Class {c}", edgecolors="none")
+    plt.scatter(means[i, 0], means[i, 1], marker="X", s=120,
+                color=COLORS[i], edgecolors="black", linewidths=0.7)
+plt.xlabel("X"); plt.ylabel("Y")
+plt.title(f"Real Dataset: Gaussian Classifier (Accuracy = {acc:.2f}%)")
+plt.legend(); plt.grid(alpha=0.2); plt.tight_layout()
+plt.savefig("real_dataset_boundary.png", dpi=160)
+plt.show()
+plot_roc(y_dev, scores, classes, "ROC: Real Dataset", labels=["Class 1", "Class 2", "Class 3"])
+print("\nREAL DATASET RESULTS")
+print("Training samples:", len(X_train), "| Development samples:", len(X_dev))
+print("Samples per training class:", [int(np.sum(y_train == c)) for c in classes])
+print("Samples per development class:", [int(np.sum(y_dev == c)) for c in classes])
+print("Estimated means:\n", np.round(means, 3))
+print("Estimated covariance matrices:\n", np.round(covs, 3))
+print(f"Accuracy: {acc:.2f}%")
+print("Confusion matrix (rows=actual, columns=predicted):\n", cm)
