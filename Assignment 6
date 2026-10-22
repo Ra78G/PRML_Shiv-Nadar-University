@@ -1,0 +1,261 @@
+import math
+import random
+import numpy as np
+import matplotlib.pyplot as plt
+from sklearn.cluster import KMeans
+
+random.seed(10)  # Fixed seed makes the experiment reproducible.
+N = 500
+K = 3
+
+weights1 = [0.40, 0.35, 0.25]
+weights2 = [0.30, 0.40, 0.30]
+
+means1 = [[-4, -2], [0, 3], [4, -1]]
+means2 = [[-3, 3], [1, -3], [5, 3]]
+covariance_types = {
+    "Spherical": [
+        [[1.0, 0.0], [0.0, 1.0]],
+        [[1.0, 0.0], [0.0, 1.0]],
+        [[1.0, 0.0], [0.0, 1.0]]
+    ],
+    "Diagonal": [
+        [[2.0, 0.0], [0.0, 0.5]],
+        [[0.5, 0.0], [0.0, 2.0]],
+        [[1.5, 0.0], [0.0, 0.7]]
+    ],
+    "Full": [
+        [[2.0, 0.8], [0.8, 1.0]],
+        [[1.5, -0.6], [-0.6, 1.0]],
+        [[1.0, 0.5], [0.5, 1.5]]
+    ]
+}
+def normal_pair():
+    u1 = random.random()
+    u2 = random.random()
+    while u1 == 0:
+        u1 = random.random()
+
+    z1 = math.sqrt(-2 * math.log(u1)) * math.cos(2 * math.pi * u2)
+    z2 = math.sqrt(-2 * math.log(u1)) * math.sin(2 * math.pi * u2)
+    return z1, z2
+def choose_component(weights):
+    r = random.random()
+    if r < weights[0]:
+        return 0
+    elif r < weights[0] + weights[1]:
+        return 1
+    else:
+        return 2
+def make_point(mean, cov):
+    z1, z2 = normal_pair()
+    a = cov[0][0]
+    b = cov[0][1]
+    c = cov[1][1]
+
+    x = mean[0] + math.sqrt(a) * z1
+    y = mean[1] + (b / math.sqrt(a)) * z1
+    y = y + math.sqrt(c - (b * b / a)) * z2
+    return [x, y]
+
+# Generate points and remember which Gaussian component generated each point.
+def generate_class(n, weights, means, covariances):
+    points = []
+    component_ids = []
+
+    for _ in range(n):
+        component = choose_component(weights)
+        points.append(make_point(means[component], covariances[component]))
+        component_ids.append(component)
+
+    return points, component_ids
+component_colours = ["blue", "deepskyblue", "navy",
+                     "red", "orange", "darkred"]
+
+def plot_components(class1, comp1, class2, comp2, covariance_name):
+    plt.figure(figsize=(8, 6))
+
+    for k in range(K):
+        pts = [class1[i] for i in range(len(class1)) if comp1[i] == k]
+        plt.scatter([p[0] for p in pts], [p[1] for p in pts],
+                    s=12, alpha=0.6, color=component_colours[k],
+                    label=f"Class 1 - Component {k+1}")
+
+    for k in range(K):
+        pts = [class2[i] for i in range(len(class2)) if comp2[i] == k]
+        plt.scatter([p[0] for p in pts], [p[1] for p in pts],
+                    s=12, alpha=0.6, color=component_colours[k+3],
+                    label=f"Class 2 - Component {k+1}")
+
+    plt.title(f"Gaussian Mixture Data - {covariance_name} Covariance")
+    plt.xlabel("X1")
+    plt.ylabel("X2")
+    plt.legend(fontsize=8)
+    plt.grid(alpha=0.2)
+    plt.tight_layout()
+    plt.show()
+def distortion(point, centers):
+    distances = []
+    for center in centers:
+        d = (point[0] - center[0])**2 + (point[1] - center[1])**2
+        distances.append(d)
+    return min(distances)
+
+def predict_class(point, model1, model2):
+    d1 = distortion(point, model1.cluster_centers_)
+    d2 = distortion(point, model2.cluster_centers_)
+    return 0 if d1 <= d2 else 1
+def plot_decision_boundaries(train1, train2, model1, model2, covariance_name):
+    all_points = train1 + train2
+    x_min = min(p[0] for p in all_points) - 1
+    x_max = max(p[0] for p in all_points) + 1
+    y_min = min(p[1] for p in all_points) - 1
+    y_max = max(p[1] for p in all_points) + 1
+
+    xx, yy = np.meshgrid(np.linspace(x_min, x_max, 180),
+                         np.linspace(y_min, y_max, 180))
+    grid_predictions = []
+
+    for x, y in zip(xx.ravel(), yy.ravel()):
+        grid_predictions.append(predict_class([x, y], model1, model2))
+
+    zz = np.array(grid_predictions).reshape(xx.shape)
+
+    plt.figure(figsize=(8, 6))
+    plt.contourf(xx, yy, zz, levels=[-0.5, 0.5, 1.5],
+                 colors=["#cfe3f5", "#f9dfc5"], alpha=0.7)
+
+    plt.scatter([p[0] for p in train1], [p[1] for p in train1],
+                s=9, color="blue", alpha=0.35, label="Class 1 training")
+    plt.scatter([p[0] for p in train2], [p[1] for p in train2],
+                s=9, color="red", alpha=0.35, label="Class 2 training")
+
+    centers1 = model1.cluster_centers_
+    centers2 = model2.cluster_centers_
+    plt.scatter(centers1[:, 0], centers1[:, 1], marker="X", s=130,
+                color="blue", edgecolor="black", label="Class 1 centroids")
+    plt.scatter(centers2[:, 0], centers2[:, 1], marker="X", s=130,
+                color="red", edgecolor="black", label="Class 2 centroids")
+
+    plt.title(f"Distortion-Based Decision Regions - {covariance_name}")
+    plt.xlabel("X1")
+    plt.ylabel("X2")
+    plt.legend(fontsize=8)
+    plt.grid(alpha=0.15)
+    plt.tight_layout()
+    plt.show()
+def plot_within_class_clusters(training_points, model, class_name, covariance_name):
+    # Each grid location is coloured by the nearest centroid within this class.
+    x_min = min(p[0] for p in training_points) - 1
+    x_max = max(p[0] for p in training_points) + 1
+    y_min = min(p[1] for p in training_points) - 1
+    y_max = max(p[1] for p in training_points) + 1
+
+    xx, yy = np.meshgrid(np.linspace(x_min, x_max, 180),
+                         np.linspace(y_min, y_max, 180))
+    grid_points = np.column_stack((xx.ravel(), yy.ravel()))
+    cluster_ids = model.predict(grid_points).reshape(xx.shape)
+
+    plt.figure(figsize=(7, 5))
+    plt.contourf(xx, yy, cluster_ids, levels=[-0.5, 0.5, 1.5, 2.5],
+                 colors=["#d7e8fa", "#d9f2d9", "#fbe1cc"], alpha=0.8)
+
+    # Show training samples coloured by their learned cluster assignment.
+    training_array = np.array(training_points)
+    assigned = model.predict(training_array)
+    cluster_colours = ["royalblue", "seagreen", "darkorange"]
+
+    for cluster_id in range(K):
+        mask = assigned == cluster_id
+        plt.scatter(training_array[mask, 0], training_array[mask, 1],
+                    s=12, color=cluster_colours[cluster_id],
+                    alpha=0.65, label=f"Cluster {cluster_id + 1}")
+
+    centers = model.cluster_centers_
+    plt.scatter(centers[:, 0], centers[:, 1], marker="X", s=150,
+                color="black", edgecolor="white", linewidth=0.8,
+                label="Centroids")
+
+    plt.title(f"{class_name}: K-Means Clusters ({covariance_name} Covariance)")
+    plt.xlabel("X1")
+    plt.ylabel("X2")
+    plt.legend()
+    plt.grid(alpha=0.15)
+    plt.tight_layout()
+    plt.show()
+results = {}
+
+for experiment_number, (name, covariances) in enumerate(covariance_types.items()):
+    # Resetting seed makes comparisons reproducible.
+    random.seed(10 + experiment_number)
+
+    class1, components1 = generate_class(N, weights1, means1, covariances)
+    class2, components2 = generate_class(N, weights2, means2, covariances)
+
+    # Plot all six Gaussian components with different colours.
+    plot_components(class1, components1, class2, components2, name)
+
+    # Split each class separately: 80% training, 20% testing.
+    random.shuffle(class1)
+    random.shuffle(class2)
+    split1 = int(0.8 * N)
+    split2 = int(0.8 * N)
+
+    train1, test1 = class1[:split1], class1[split1:]
+    train2, test2 = class2[:split2], class2[split2:]
+
+    # Fit three-cluster K-Means separately for each class.
+    model1 = KMeans(n_clusters=K, random_state=10, n_init=10).fit(train1)
+    model2 = KMeans(n_clusters=K, random_state=10, n_init=10).fit(train2)
+
+    # Plot decision regions and learned centroids.
+    plot_decision_boundaries(train1, train2, model1, model2, name)
+
+    # Plot the three K-Means regions separately inside each class.
+    plot_within_class_clusters(train1, model1, "Class 1", name)
+    plot_within_class_clusters(train2, model2, "Class 2", name)
+
+    # Classify the remaining 20% using distortion.
+    test_data = [(p, 0) for p in test1] + [(p, 1) for p in test2]
+    correct = 0
+    wrong_points = []
+
+    for point, actual_class in test_data:
+        predicted_class = predict_class(point, model1, model2)
+        if predicted_class == actual_class:
+            correct += 1
+        else:
+            wrong_points.append((point, actual_class))
+
+    accuracy = 100 * correct / len(test_data)
+    results[name] = accuracy
+
+    # Plot test samples; black crosses show classification errors.
+    plt.figure(figsize=(8, 6))
+    plt.scatter([p[0] for p in test1], [p[1] for p in test1],
+                s=16, color="blue", alpha=0.55, label="Class 1 test")
+    plt.scatter([p[0] for p in test2], [p[1] for p in test2],
+                s=16, color="red", alpha=0.55, label="Class 2 test")
+    if wrong_points:
+        plt.scatter([item[0][0] for item in wrong_points],
+                    [item[0][1] for item in wrong_points],
+                    marker="x", s=55, color="black", label="Misclassified")
+
+    plt.title(f"Test Samples - {name} Covariance (Accuracy: {accuracy:.2f}%)")
+    plt.xlabel("X1")
+    plt.ylabel("X2")
+    plt.legend()
+    plt.grid(alpha=0.2)
+    plt.tight_layout()
+    plt.show()
+
+    print("\n" + "=" * 45)
+    print("Covariance type:", name)
+    print("Training samples:", len(train1) + len(train2))
+    print("Testing samples:", len(test_data))
+    print("Correct predictions:", correct, "/", len(test_data))
+    print(f"Test accuracy: {accuracy:.2f}%")
+
+print("\nSUMMARY OF TEST ACCURACY")
+for name, accuracy in results.items():
+    print(f"{name}: {accuracy:.2f}%")
